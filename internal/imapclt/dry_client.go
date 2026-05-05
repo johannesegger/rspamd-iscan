@@ -30,6 +30,14 @@ func (c *DryClient) Move(uids []uint32, mailbox string) error {
 	return nil
 }
 
+// Delete logs a debug message and returns nil
+func (c *DryClient) Delete(uids []uint32) error {
+	c.logger.Debug("dry-client: skipping deleting messages",
+		"count", len(uids),
+	)
+	return nil
+}
+
 // MarkSeen logs a debug message and returns nil
 func (c *DryClient) MarkSeen(uids []uint32) error {
 	c.logger.Debug("dry-client: skipping marking messages as seen",

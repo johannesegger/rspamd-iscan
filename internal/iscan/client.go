@@ -237,10 +237,8 @@ func (c *Client) isSpam(r *rspamc.CheckResult) bool {
 }
 
 // replaceWithModifiedMails uploads mails to the spam or inbox mailbox, depending on their
-// spam score.
-// The original email is moved to the backup mailbox.
-// It returns an UIDSet of all successfully uploaded mails.
-// When errors happen, an error **and** a non-empty UIDSet can be returned.
+// spam score. If a backup mailbox is configured, the original is moved there first (marked
+// as read). When errors happen, an error **and** partial work can have been done.
 func (c *Client) replaceWithModifiedMails(mails []*scannedMail) error {
 	var errs []error
 
@@ -252,17 +250,14 @@ func (c *Client) replaceWithModifiedMails(mails []*scannedMail) error {
 			"mail.uid", mail.UID,
 		)
 
-		// TODO: support deleting emails from the mailbox, when backupMailbox is
-		// empty instead of keeping a copy of the original, deleting
-		// must happen after appendMail!
-		err := c.clt.Move([]uint32{mail.UID}, c.backupMailbox)
-		if err != nil {
-			errs = append(errs, fmt.Errorf(
-				"moving mail (%d) (%s) to backup mailbox %s failed: %w",
-				mail.UID, mail.Envelope.Subject, c.backupMailbox, err,
-			))
-
-			continue
+		if c.backupMailbox != "" {
+			if err := c.clt.Move([]uint32{mail.UID}, c.backupMailbox); err != nil {
+				errs = append(errs, fmt.Errorf(
+					"moving mail (%d) (%s) to backup mailbox %s failed: %w",
+					mail.UID, mail.Envelope.Subject, c.backupMailbox, err,
+				))
+				continue
+			}
 		}
 
 		if c.isSpam(mail.CheckResult) {
@@ -271,21 +266,40 @@ func (c *Client) replaceWithModifiedMails(mails []*scannedMail) error {
 			mbox = c.inboxMailbox
 		}
 
-		err = c.clt.Upload(mail.Path, mbox, mail.Envelope.Date)
+		err := c.clt.Upload(mail.Path, mbox, mail.Envelope.Date)
 		if err != nil {
 			errs = append(errs, fmt.Errorf(
 				"uploading email %q (%s) (%s) to %s failed: %w",
 				mail.UID, mail.Envelope.Subject, mail.Path, mbox, err,
 			))
-			logger.Warn(
-				"uploading scanned email to inbox failed, please find the original email in the backup mailbox!",
-				"event", "imap.msg_append_failed",
-				"filepath", mail.Path,
-				"mailbox.backup", c.backupMailbox,
-				"mailbox.inbox", c.inboxMailbox,
-			)
+			if c.backupMailbox != "" {
+				logger.Warn(
+					"uploading scanned email failed, original is in backup mailbox and must be recovered manually",
+					"event", "imap.msg_append_failed",
+					"filepath", mail.Path,
+					"mailbox.backup", c.backupMailbox,
+					"mailbox.target", mbox,
+				)
+			} else {
+				logger.Warn(
+					"uploading scanned email failed, original remains in scan mailbox and will be retried",
+					"event", "imap.msg_append_failed",
+					"filepath", mail.Path,
+					"mailbox.target", mbox,
+				)
+			}
 
 			continue
+		}
+
+		if c.backupMailbox == "" {
+			if err := c.clt.Delete([]uint32{mail.UID}); err != nil {
+				errs = append(errs, fmt.Errorf(
+					"deleting original mail (%d) (%s) from scan mailbox failed: %w",
+					mail.UID, mail.Envelope.Subject, err,
+				))
+				continue
+			}
 		}
 
 		if c.keepTempFiles {

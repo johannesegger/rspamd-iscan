@@ -305,6 +305,36 @@ func (c *Client) MarkSeen(uids []uint32) error {
 	return nil
 }
 
+// Delete marks the messages with the given UIDs as deleted and expunges them
+// from the currently selected mailbox.
+func (c *Client) Delete(uids []uint32) error {
+	if len(uids) == 0 {
+		return errors.New("no uids were given")
+	}
+
+	uidSet := asUIDSet(uids)
+
+	if err := c.clt.Store(uidSet, &imap.StoreFlags{
+		Op:     imap.StoreFlagsAdd,
+		Silent: true,
+		Flags:  []imap.Flag{imap.FlagDeleted},
+	}, nil).Close(); err != nil {
+		return fmt.Errorf("marking messages as deleted failed: %w", err)
+	}
+
+	if err := c.clt.UIDExpunge(uidSet).Close(); err != nil {
+		return fmt.Errorf("expunging messages failed: %w", err)
+	}
+
+	c.logger.Debug(
+		"deleted imap messages",
+		"count", len(uids),
+		"event", "imap.messages_deleted",
+	)
+
+	return nil
+}
+
 func (c *Client) setNewMessagesCH(ch chan<- *EventNewMessages) {
 	c.mu.Lock()
 	c.newMessagesCh = ch

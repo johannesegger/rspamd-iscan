@@ -14,6 +14,7 @@ import (
 type IMAPClient interface {
 	Close() error
 	Connect() error
+	Delete(uids []uint32) error
 	MarkSeen(uids []uint32) error
 	Messages(mailbox string) iter.Seq2[*imapclt.Message, error]
 	Monitor(mailbox string) (<-chan *imapclt.EventNewMessages, func() error, error)
@@ -56,10 +57,6 @@ func (c *Config) validate() error {
 
 	if c.ScanMailbox == c.HamMailbox {
 		return errors.New("ScanMailbox and HamMailbox must differ")
-	}
-
-	if c.BackupMailbox == "" {
-		return errors.New("BackupMailbox can not be empty")
 	}
 
 	if c.BackupMailbox == c.InboxMailbox {
