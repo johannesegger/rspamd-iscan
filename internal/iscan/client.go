@@ -48,8 +48,9 @@ type Client struct {
 	undetectedMailbox string
 	spamTreshold      float32
 
-	tempDir       string
-	keepTempFiles bool
+	tempDir              string
+	keepTempFiles        bool
+	markUndetectedAsRead bool
 
 	learnInterval time.Duration
 
@@ -75,20 +76,21 @@ func NewClient(cfg *Config) (*Client, error) {
 	}
 
 	c := &Client{
-		clt:               cfg.IMAPClient,
-		logger:            log.EnsureLoggerInstance(cfg.Logger),
-		inboxMailbox:      cfg.InboxMailbox,
-		scanMailbox:       cfg.ScanMailbox,
-		spamMailbox:       cfg.SpamMailboxName,
-		hamMailbox:        cfg.HamMailbox,
-		undetectedMailbox: cfg.UndetectedMailboxName,
-		rspamc:            cfg.Rspamc,
-		spamTreshold:      cfg.SpamTreshold,
-		learnInterval:     30 * time.Minute,
-		backupMailbox:     cfg.BackupMailbox,
-		tempDir:           cfg.TempDir,
-		keepTempFiles:     cfg.KeepTempFiles,
-		stopCh:            make(chan struct{}),
+		clt:                  cfg.IMAPClient,
+		logger:               log.EnsureLoggerInstance(cfg.Logger),
+		inboxMailbox:         cfg.InboxMailbox,
+		scanMailbox:          cfg.ScanMailbox,
+		spamMailbox:          cfg.SpamMailboxName,
+		hamMailbox:           cfg.HamMailbox,
+		undetectedMailbox:    cfg.UndetectedMailboxName,
+		rspamc:               cfg.Rspamc,
+		spamTreshold:         cfg.SpamTreshold,
+		learnInterval:        30 * time.Minute,
+		backupMailbox:        cfg.BackupMailbox,
+		tempDir:              cfg.TempDir,
+		keepTempFiles:        cfg.KeepTempFiles,
+		markUndetectedAsRead: cfg.MarkUndetectedAsRead,
+		stopCh:               make(chan struct{}),
 	}
 
 	return c, nil
@@ -99,7 +101,7 @@ func (c *Client) ProcessHam() error {
 		return nil
 	}
 
-	return c.learn(c.hamMailbox, c.inboxMailbox, c.rspamc.Ham)
+	return c.learn(c.hamMailbox, c.inboxMailbox, false, c.rspamc.Ham)
 }
 
 func (c *Client) ProcessSpam() error {
@@ -107,10 +109,10 @@ func (c *Client) ProcessSpam() error {
 		return nil
 	}
 
-	return c.learn(c.undetectedMailbox, c.spamMailbox, c.rspamc.Spam)
+	return c.learn(c.undetectedMailbox, c.spamMailbox, c.markUndetectedAsRead, c.rspamc.Spam)
 }
 
-func (c *Client) learn(srcMailbox, destMailbox string, learnFn learnFn) error {
+func (c *Client) learn(srcMailbox, destMailbox string, markAsSeen bool, learnFn learnFn) error {
 	var processedMsgUIDs []uint32
 
 	logger := c.logger.With("mailbox.source", srcMailbox)
@@ -154,6 +156,12 @@ func (c *Client) learn(srcMailbox, destMailbox string, learnFn learnFn) error {
 
 	if len(processedMsgUIDs) == 0 {
 		return nil
+	}
+
+	if markAsSeen {
+		if err := c.clt.MarkSeen(processedMsgUIDs); err != nil {
+			return fmt.Errorf("marking messages as seen failed: %w", err)
+		}
 	}
 
 	err := c.clt.Move(processedMsgUIDs, destMailbox)

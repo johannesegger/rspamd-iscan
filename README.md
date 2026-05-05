@@ -95,6 +95,8 @@ SpamThreshold       = 10.0
 # Raw incoming and outgoing IMAP data is logged with debug log level.
 # The logged data can contain sensitive information, like credentials.
 LogIMAPData         = false
+# Mark mails in UndetectedMailbox as read when moving them to SpamMailbox.
+MarkUndetectedAsRead = false
 ```
 
 ### Credentials Directory

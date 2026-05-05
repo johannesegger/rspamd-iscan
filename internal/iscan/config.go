@@ -14,6 +14,7 @@ import (
 type IMAPClient interface {
 	Close() error
 	Connect() error
+	MarkSeen(uids []uint32) error
 	Messages(mailbox string) iter.Seq2[*imapclt.Message, error]
 	Monitor(mailbox string) (<-chan *imapclt.EventNewMessages, func() error, error)
 	Move(uids []uint32, mailbox string) error
@@ -30,6 +31,11 @@ type Config struct {
 
 	TempDir       string
 	KeepTempFiles bool
+
+	// MarkUndetectedAsRead marks messages as read (\Seen) before moving them
+	// from the undetected mailbox to the spam mailbox. The \Seen flag is
+	// preserved by the IMAP MOVE command (RFC 6851).
+	MarkUndetectedAsRead bool
 
 	SpamTreshold float32
 

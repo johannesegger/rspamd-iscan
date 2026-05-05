@@ -145,6 +145,7 @@ func newIscanClient(
 		SpamTreshold:          cfg.SpamThreshold,
 		TempDir:               cfg.TempDir,
 		KeepTempFiles:         cfg.KeepTempFiles,
+		MarkUndetectedAsRead:  cfg.MarkUndetectedAsRead,
 		Logger:                logger,
 		Rspamc:                rspamc,
 		IMAPClient:            imapClt,
